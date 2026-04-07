@@ -1,0 +1,51 @@
+type YearMonth = text;
+type RegionSummary = 
+ record {
+   latestPrice: opt PropertyPrice;
+   region: Region;
+ };
+type RegionLevel = 
+ variant {
+   city;
+   district;
+   province;
+ };
+type RegionId = nat;
+type Region = 
+ record {
+   id: RegionId;
+   level: RegionLevel;
+   name: text;
+   parentId: opt RegionId;
+ };
+type PropertyType = 
+ variant {
+   apartment;
+   land;
+   villa;
+ };
+type PropertyPrice = 
+ record {
+   averagePrice: nat;
+   changeFromPrevMonth: int;
+   changePercent: int;
+   month: YearMonth;
+   pricePerSqm: nat;
+   propertyType: PropertyType;
+   regionId: RegionId;
+ };
+service : {
+  addPropertyPrice: (price: PropertyPrice) -> ();
+  addRegion: (region: Region) -> (RegionId);
+  compareRegions: (regionIds: vec RegionId, propertyType: PropertyType) ->
+   (vec PropertyPrice) query;
+  getLastUpdated: () -> (int) query;
+  getRegionPrices: (regionId: RegionId, propertyType: PropertyType, months:
+   nat) -> (vec PropertyPrice) query;
+  getRegionSummaries: (propertyType: PropertyType) ->
+   (vec RegionSummary) query;
+  getRegions: (parentId: opt RegionId) -> (vec Region) query;
+  initSampleData: () -> ();
+  refreshPrices: () -> ();
+  searchRegions: (queryText: text) -> (vec Region) query;
+}

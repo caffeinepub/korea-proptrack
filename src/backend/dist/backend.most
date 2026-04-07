@@ -1,0 +1,43 @@
+// Version: 1.0.0
+type Nat__490723111 = Nat__920180692;
+type Nat__920180692 = Nat;
+type PropertyPrice__502728297 =
+  {
+    averagePrice : Nat;
+    changeFromPrevMonth : Int;
+    changePercent : Int;
+    month : YearMonth__309798466;
+    pricePerSqm : Nat;
+    propertyType : PropertyType__673523169;
+    regionId : RegionId__460180625
+  };
+type PropertyType__673523169 = {#apartment; #land; #villa};
+type RegionId__460180625 = RegionId__849075273;
+type RegionId__849075273 = Nat;
+type RegionLevel__426207048 = {#city; #district; #province};
+type Region__805638955 =
+  {
+    id : RegionId__460180625;
+    level : RegionLevel__426207048;
+    name : Text;
+    parentId : ?RegionId__460180625
+  };
+type YearMonth__309798466 = YearMonth__566321074;
+type YearMonth__566321074 = Text;
+actor {
+  stable lastUpdated : {var val : Int};
+  stable nextRegionId : {var val : Nat};
+  stable var nextRegionIdVal : Nat;
+  stable prices :
+    {
+      var blockIndex : Nat__490723111;
+      var blocks : [var [var ?PropertyPrice__502728297]];
+      var elementIndex : Nat__490723111
+    };
+  stable regions :
+    {
+      var blockIndex : Nat__490723111;
+      var blocks : [var [var ?Region__805638955]];
+      var elementIndex : Nat__490723111
+    }
+};
