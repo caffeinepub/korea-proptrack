@@ -124,6 +124,7 @@ mixin (
   };
 
   // 샘플 데이터 초기화 (앱 최초 로드 시 호출)
+  // 지역당 가격 레코드가 36개 미만이면 데이터를 강제 재생성하여 36개월 전체 커버
   public shared ({ caller = _ }) func initSampleData() : async () {
     // 지역 데이터가 없으면 먼저 초기화
     if (regions.isEmpty()) {
@@ -134,14 +135,28 @@ mixin (
       nextRegionId.val := 2000;
     };
 
-    // 가격 데이터는 항상 새로 생성 (최신 시세 반영, 2026년 4월까지)
-    prices.clear();
     let currentRegions = regions.toArray();
-    let samplePrices = PropertyLib.buildSamplePrices(currentRegions);
-    for (p in samplePrices.values()) {
-      prices.add(p);
+
+    // 가격 데이터 재생성 여부 판단:
+    // 기존 데이터가 없거나 첫 번째 지역의 아파트 레코드가 36개 미만이면 강제 재생성
+    let needsRegen = prices.isEmpty() or (
+      do {
+        let aptPricesForFirstRegion = prices.filter(func(p) {
+          p.regionId == 1 and p.propertyType == #apartment
+        });
+        aptPricesForFirstRegion.size() < 36
+      }
+    );
+
+    if (needsRegen) {
+      // 가격 데이터 재생성 (36개월치, 최신 시세 반영)
+      prices.clear();
+      let samplePrices = PropertyLib.buildSamplePrices(currentRegions);
+      for (p in samplePrices.values()) {
+        prices.add(p);
+      };
+      lastUpdated.val := Time.now();
     };
-    lastUpdated.val := Time.now();
 
     // 백그라운드에서 국토교통부 API 데이터로 아파트 가격 업데이트 시도
     // (비동기로 실행되어 initSampleData는 즉시 반환)

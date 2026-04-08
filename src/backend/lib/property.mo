@@ -168,10 +168,10 @@ module {
     y.toText() # ms
   };
 
-  // Build last 12 months of YYYYMM strings, index 0 = 12 months ago, index 11 = current month
-  func buildMonthList() : [Text] {
-    Array.tabulate<Text>(12, func(i) {
-      yearMonthOffset(-11 + i.toInt())
+  // Build last N months of YYYYMM strings, index 0 = N months ago, index N-1 = current month
+  func buildMonthList(n : Nat) : [Text] {
+    Array.tabulate<Text>(n, func(i) {
+      yearMonthOffset(-(n.toInt() - 1) + i.toInt())
     })
   };
 
@@ -424,18 +424,46 @@ module {
     }
   };
 
-  // Monthly trend deltas for 12 months relative to base price
-  // Values are basis points (100 = 1%). Applied sequentially from 12 months ago.
-  // 2025~2026 trend: Seoul/Gyeonggi continued strong recovery; regional cities moderate
+  // Monthly trend deltas for up to 36 months relative to base price
+  // Values are basis points (100 = 1%). Applied sequentially from 36 months ago.
+  // 2023~2026 trend: Seoul/Gyeonggi strong recovery; regional cities moderate to flat
   func trendDelta(regionId : RegionId, monthIdx : Nat) : Int {
-    // Strong upward: 서울 핵심 + 경기 + 세종
-    let upward  : [Int] = [ 80, 100, 120, 130, 140, 150, 140, 130, 120, 110, 100,  90 ];
+    // Strong upward: 서울 핵심 + 경기 + 세종 (36 months of gradual but strong appreciation)
+    let upward  : [Int] = [
+      30, 40, 50, 60, 70, 80,  // 2023 Apr–Sep: recovery begins
+      90, 100, 110, 120, 110, 100, // 2023 Oct – 2024 Mar
+      90, 95, 100, 110, 120, 130,  // 2024 Apr–Sep
+      140, 150, 145, 135, 130, 125, // 2024 Oct – 2025 Mar
+      120, 130, 140, 150, 145, 140, // 2025 Apr–Sep
+      135, 130, 120, 110, 100, 90   // 2025 Oct – 2026 Mar (→ Apr)
+    ];
     // Moderate up: 부산 premium, 인천, 대전 유성구
-    let modUp   : [Int] = [ 30,  40,  50,  60,  70,  60,  50,  40,  35,  35,  40,  45 ];
+    let modUp   : [Int] = [
+      10, 15, 20, 25, 30, 35,
+      40, 45, 50, 55, 50, 45,
+      40, 40, 45, 50, 55, 60,
+      65, 60, 55, 50, 45, 40,
+      38, 40, 45, 50, 55, 52,
+      50, 48, 44, 40, 38, 40
+    ];
     // Flat: most provincial cities
-    let flat    : [Int] = [  0,   5,  10,   5,   0,   0,   5,  10,   5,   0,   5,   5 ];
+    let flat    : [Int] = [
+      -5, 0, 5, 10, 8, 5,
+       0, 3, 8, 10, 8, 5,
+       0, 2, 5, 8, 6, 4,
+       2, 5, 8, 6, 4, 2,
+       0, 3, 6, 8, 7, 5,
+       3, 5, 6, 5, 4, 3
+    ];
     // Slight decline: smaller regional cities
-    let decline : [Int] = [ -10,  -5,   0,  -5, -10, -15, -10,  -5,  -5,   0,   5,   5 ];
+    let decline : [Int] = [
+      -20, -15, -10, -8, -5, -3,
+       -5, -8, -5, -3, 0, -2,
+       -5, -8, -5, -3, 0, 2,
+        0, -2, -5, -8, -5, -3,
+       -2, 0, 3, 5, 3, 0,
+       -2, -3, -5, -3, 0, 2
+    ];
 
     let isUpward = regionId == 1 or regionId == 101 or regionId == 102 or
                    regionId == 103 or regionId == 104 or regionId == 105 or
@@ -458,19 +486,20 @@ module {
                   else if (isStable) flat
                   else decline;
 
-    if (monthIdx < 12) pattern[monthIdx] else 0
+    if (monthIdx < 36) pattern[monthIdx] else 0
   };
 
-  // Build all sample price records using dynamically calculated recent months
+  // Build all sample price records using dynamically calculated recent 36 months
   public func buildSamplePrices(regions : [Region]) : [PropertyPrice] {
     let pts : [PropertyType] = [#apartment, #villa, #land];
-    let months = buildMonthList(); // last 12 months from today
+    let maxMonths : Nat = 36;
+    let months = buildMonthList(maxMonths); // last 36 months from today
     var result : [PropertyPrice] = [];
     for (region in regions.values()) {
       for (pt in pts.values()) {
         let base = basePrice(region.id, pt);
         var prevPrice : Int = base.toInt();
-        for (mi in Nat.range(0, 12)) {
+        for (mi in Nat.range(0, maxMonths)) {
           let delta = trendDelta(region.id, mi);
           let change : Int = prevPrice * delta / 10000;
           let newPrice : Int = prevPrice + change;
@@ -683,12 +712,13 @@ module {
     } catch _ { null };
   };
 
-  // Fetch API prices for key regions for the last 3 months and build a full 12-month set
+  // Fetch API prices for key regions for the last 3 months and build a full 36-month set
   // Returns a list of PropertyPrice records, or empty list on complete failure
   public func fetchAndBuildApiPrices(regions : [Region]) : async [PropertyPrice] {
-    let months = buildMonthList();
+    let maxMonths : Nat = 36;
+    let months = buildMonthList(maxMonths);
     // Only fetch the 3 most recent months to limit API call count
-    let recentMonths = months.sliceToArray(9, 12); // indices 9,10,11 = last 3 months
+    let recentMonths = months.sliceToArray(maxMonths - 3, maxMonths); // last 3 months
     var apiPrices : [PropertyPrice] = [];
 
     for (region in regions.values()) {
@@ -701,14 +731,14 @@ module {
             monthPrices := monthPrices.concat([(ym, avgPrice)]);
           };
 
-          // Build 12-month series: extrapolate backwards for the first 9 months
-          // using base prices and trend deltas, then use API data for the last 3
+          // Build 36-month series: compute all months using sample logic, then
+          // override the last 3 months with real API data where available
           let base = basePrice(region.id, #apartment);
           var prevPrice : Int = base.toInt();
 
-          // First compute prices for all 12 months using sample logic
+          // First compute prices for all 36 months using sample logic
           var sampleMonthPrices : [Nat] = [];
-          for (mi in Nat.range(0, 12)) {
+          for (mi in Nat.range(0, maxMonths)) {
             let delta = trendDelta(region.id, mi);
             let change : Int = prevPrice * delta / 10000;
             let newPrice : Int = prevPrice + change;
@@ -720,11 +750,11 @@ module {
           // Override last 3 months with API data where available
           var finalPrices : [Nat] = sampleMonthPrices;
           for (i in Nat.range(0, 3)) {
-            let idx = 9 + i;
+            let idx = maxMonths - 3 + i;
             let (_, apiPrice) = monthPrices[i];
             switch (apiPrice) {
               case (?p) {
-                finalPrices := Array.tabulate<Nat>(12, func(j) {
+                finalPrices := Array.tabulate<Nat>(maxMonths, func(j) {
                   if (j == idx) p else finalPrices[j]
                 });
               };
@@ -734,7 +764,7 @@ module {
 
           // Build PropertyPrice records for apartment
           var lastPrice : Nat = if (finalPrices.size() > 0) finalPrices[0] else base;
-          for (mi in Nat.range(0, 12)) {
+          for (mi in Nat.range(0, maxMonths)) {
             let curPrice = finalPrices[mi];
             let changeAmt : Int = curPrice.toInt() - lastPrice.toInt();
             let changePct : Int = if (lastPrice > 0) (changeAmt * 10000 / lastPrice.toInt()) else 0;
