@@ -42,11 +42,19 @@ export function formatChangePercent(value: bigint | number): string {
 }
 
 /**
- * Formats a YearMonth string (YYYY-MM) to Korean date format.
+ * Formats a YearMonth string to Korean date format.
+ * Supports both "YYYYMM" (6-char, no dash) and "YYYY-MM" (7-char, with dash) formats.
  */
 export function formatMonth(ym: string): string {
   if (!ym) return "";
-  const [year, month] = ym.split("-");
+  let year: string;
+  let month: string;
+  if (ym.length === 6) {
+    year = ym.slice(0, 4);
+    month = ym.slice(4, 6);
+  } else {
+    [year, month] = ym.split("-");
+  }
   return `${year}년 ${Number.parseInt(month, 10)}월`;
 }
 

@@ -142,18 +142,18 @@ export default function RegionDetail() {
   // Chart data
   const chartData = sorted.map((p) => ({
     month: formatMonth(p.month),
-    평균가격: Number(p.averagePrice) / 1_0000_0000,
+    평균가격: Number(p.averagePrice) / 10000,
     rawAvg: p.averagePrice,
     rawChange: p.changePercent,
   }));
 
   const chartMin =
     priceValues.length > 0
-      ? Math.floor((minPrice / 1_0000_0000) * 0.97 * 10) / 10
+      ? Math.floor((minPrice / 10000) * 0.97 * 10) / 10
       : 0;
   const chartMax =
     priceValues.length > 0
-      ? Math.ceil((maxPrice / 1_0000_0000) * 1.03 * 10) / 10
+      ? Math.ceil((maxPrice / 10000) * 1.03 * 10) / 10
       : 10;
 
   return (
@@ -337,7 +337,7 @@ export default function RegionDetail() {
                 <YAxis
                   domain={[chartMin, chartMax]}
                   tickFormatter={(v: number) =>
-                    `${formatPriceCompact(v * 1_0000_0000)}`
+                    `${formatPriceCompact(v * 10000)}`
                   }
                   tick={{
                     fontSize: 11,

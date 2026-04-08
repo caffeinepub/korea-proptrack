@@ -60,18 +60,70 @@ mixin (
     PropertyLib.addPropertyPrice(prices, price)
   };
 
-  // 가격 데이터 새로고침 (최신 샘플 가격으로 재생성)
+  // 가격 데이터 새로고침: 국토교통부 API 호출 시도 후 실패 시 샘플 데이터 사용
   public shared ({ caller = _ }) func refreshPrices() : async () {
-    prices.clear();
     let currentRegions = regions.toArray();
-    let samplePrices = PropertyLib.buildSamplePrices(currentRegions);
-    for (p in samplePrices.values()) {
-      prices.add(p);
+
+    // 지역이 없으면 먼저 초기화
+    if (currentRegions.size() == 0) {
+      let sampleRegions = PropertyLib.buildSampleRegions();
+      for (r in sampleRegions.values()) {
+        regions.add(r);
+      };
+      nextRegionId.val := 2000;
     };
+
+    let allRegions = regions.toArray();
+
+    // 국토교통부 API로 아파트 실거래가 데이터 가져오기 시도
+    let apiPrices = await PropertyLib.fetchAndBuildApiPrices(allRegions);
+
+    prices.clear();
+
+    if (apiPrices.size() > 0) {
+      // API 데이터 사용 (아파트만): 다른 부동산 유형은 샘플 데이터로 채움
+      let sampleAll = PropertyLib.buildSamplePrices(allRegions);
+
+      // 샘플 데이터 중 villa/land만 추가
+      for (p in sampleAll.values()) {
+        switch (p.propertyType) {
+          case (#apartment) {}; // API 데이터로 대체
+          case _ { prices.add(p) };
+        };
+      };
+
+      // API 아파트 데이터 추가
+      for (p in apiPrices.values()) {
+        prices.add(p);
+      };
+
+      // API 데이터가 없는 지역의 아파트는 샘플 데이터로 채움
+      // (getLawdCd가 null을 반환한 지역들)
+      for (p in sampleAll.values()) {
+        switch (p.propertyType) {
+          case (#apartment) {
+            let hasApiData = apiPrices.find(func(ap) {
+              ap.regionId == p.regionId and ap.month == p.month
+            }) != null;
+            if (not hasApiData) {
+              prices.add(p);
+            };
+          };
+          case _ {};
+        };
+      };
+    } else {
+      // API 완전 실패: 샘플 데이터로 폴백
+      let samplePrices = PropertyLib.buildSamplePrices(allRegions);
+      for (p in samplePrices.values()) {
+        prices.add(p);
+      };
+    };
+
     lastUpdated.val := Time.now();
   };
 
-  // 샘플 데이터 초기화 (항상 최신 데이터로 갱신)
+  // 샘플 데이터 초기화 (앱 최초 로드 시 호출)
   public shared ({ caller = _ }) func initSampleData() : async () {
     // 지역 데이터가 없으면 먼저 초기화
     if (regions.isEmpty()) {
@@ -81,7 +133,8 @@ mixin (
       };
       nextRegionId.val := 2000;
     };
-    // 가격 데이터는 항상 새로 생성 (최신 시세 반영)
+
+    // 가격 데이터는 항상 새로 생성 (최신 시세 반영, 2026년 4월까지)
     prices.clear();
     let currentRegions = regions.toArray();
     let samplePrices = PropertyLib.buildSamplePrices(currentRegions);
@@ -89,5 +142,43 @@ mixin (
       prices.add(p);
     };
     lastUpdated.val := Time.now();
+
+    // 백그라운드에서 국토교통부 API 데이터로 아파트 가격 업데이트 시도
+    // (비동기로 실행되어 initSampleData는 즉시 반환)
+    ignore (async {
+      let apiPrices = await PropertyLib.fetchAndBuildApiPrices(currentRegions);
+      if (apiPrices.size() > 0) {
+        // API 아파트 데이터로 샘플 아파트 데이터 교체
+        let nonAptPrices = prices.filter(func(p) {
+          switch (p.propertyType) {
+            case (#apartment) false;
+            case _ true;
+          }
+        }).toArray();
+        prices.clear();
+        for (p in nonAptPrices.values()) {
+          prices.add(p);
+        };
+        for (p in apiPrices.values()) {
+          prices.add(p);
+        };
+        // Fill missing apartment regions with sample data
+        let sampleAll = PropertyLib.buildSamplePrices(currentRegions);
+        for (p in sampleAll.values()) {
+          switch (p.propertyType) {
+            case (#apartment) {
+              let hasApiData = apiPrices.find(func(ap) {
+                ap.regionId == p.regionId and ap.month == p.month
+              }) != null;
+              if (not hasApiData) {
+                prices.add(p);
+              };
+            };
+            case _ {};
+          };
+        };
+        lastUpdated.val := Time.now();
+      };
+    });
   };
 };
